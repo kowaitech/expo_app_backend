@@ -23,11 +23,32 @@ const client = new MongoClient(uri, {
   },
 });
 
+function calculateImpact(category, value) {
+  const num = Number(value);
+
+  switch (category) {
+    case "Green Transportation":
+      return { co2SavedKg: num * 0.2 }; // km × 0.2
+    case "Water Conservation":
+      return { waterSavedL: num }; // liters
+    case "Tree Plantation":
+      return { co2SavedKg: num * 21 }; // 1 tree ≈ 21kg/year
+    case "Energy Saving":
+      return { co2SavedKg: num * 0.82 }; // units × 0.82
+    case "Waste Reduction":
+      return { co2SavedKg: num * 1.5 }; // kg plastic
+    default:
+      return {};
+  }
+}
+
+
 async function run() {
   try {
     await client.connect();
 
     const users = client.db("authdb").collection("users");
+const activities = client.db("authdb").collection("activities");
 
     // ================= REGISTER =================
     app.post("/register", async (req, res) => {
@@ -88,6 +109,52 @@ async function run() {
         user: req.user,
       });
     });
+
+    // ================= ADD ACTIVITY =================
+app.post("/activities", verifyToken, async (req, res) => {
+  try {
+    const {
+      title,
+      category,
+      description,
+      date,
+      location,
+      value,
+      activityType,
+    } = req.body;
+
+    if (!title || !category || !value) {
+      return res.status(400).send({ message: "Required fields missing" });
+    }
+
+    const impact = calculateImpact(category, value);
+
+    const activity = {
+      userId: req.user.id, // from JWT
+      title,
+      category,
+      description,
+      date,
+      location,
+      value: Number(value),
+      impact,
+      activityType: activityType || "Personal",
+      status: "Pending",
+      createdAt: new Date(),
+    };
+
+    await activities.insertOne(activity);
+
+    res.send({
+      message: "Activity added successfully",
+      activity,
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).send({ message: "Server error" });
+  }
+});
+
 
     console.log("Auth server connected to MongoDB");
   } catch (err) {
