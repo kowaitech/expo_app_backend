@@ -48,7 +48,7 @@ async function run() {
     await client.connect();
 
     const users = client.db("authdb").collection("users");
-const activities = client.db("authdb").collection("activities");
+    const activities = client.db("authdb").collection("activities");
 
     // ================= REGISTER =================
     app.post("/register", async (req, res) => {
@@ -152,6 +152,62 @@ app.post("/activities", verifyToken, async (req, res) => {
   } catch (error) {
     console.error(error);
     res.status(500).send({ message: "Server error" });
+  }
+});
+
+// ================= GET USER ACTIVITIES =================
+app.get("/activities", verifyToken, async (req, res) => {
+  try {
+    const list = await activities
+      .find({ userId: req.user.id })
+      .sort({ createdAt: -1 })
+      .toArray();
+
+    res.send(list);
+  } catch (err) {
+    res.status(500).send({ message: "Failed to fetch activities" });
+  }
+});
+
+// ================= DASHBOARD STATS =================
+app.get("/dashboard", verifyToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+
+    const todayEnd = new Date();
+    todayEnd.setHours(23, 59, 59, 999);
+
+    const todayActivities = await activities.countDocuments({
+      userId,
+      createdAt: { $gte: todayStart, $lte: todayEnd },
+    });
+
+    const totalActivities = await activities.countDocuments({ userId });
+
+    const totalImpact = await activities
+      .aggregate([
+        { $match: { userId } },
+        {
+          $group: {
+            _id: null,
+            co2: { $sum: "$impact.co2SavedKg" },
+            water: { $sum: "$impact.waterSavedL" },
+          },
+        },
+      ])
+      .toArray();
+
+    res.send({
+      todayActivities,
+      totalActivities,
+      totalCO2: totalImpact[0]?.co2 || 0,
+      totalWater: totalImpact[0]?.water || 0,
+    });
+  } catch (err) {
+    res.status(500).send({ message: "Dashboard fetch failed" });
   }
 });
 
